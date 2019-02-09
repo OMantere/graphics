@@ -15,40 +15,42 @@ namespace FW
 {
 
 
-// Given a vector n, forms an orthogonal matrix with n as the last column, i.e.,
-// a coordinate system aligned such that n is its local z axis.
-// You'll have to fill in the implementation for this.
-Mat3f formBasis(const Vec3f& n);
+	// Given a vector n, forms an orthogonal matrix with n as the last column, i.e.,
+	// a coordinate system aligned such that n is its local z axis.
+	// You'll have to fill in the implementation for this.
+	Mat3f formBasis(const Vec3f& n);
 
-Vec2f getTexelCoords(Vec2f uv, const Vec2i size);
+	Vec2f getTexelCoords(Vec2f uv, const Vec2i size);
 
 
-// Main class for tracing rays using BVHs.
-class RayTracer {
-public:
-                        RayTracer				(void);
-                        ~RayTracer				(void);
+	// Main class for tracing rays using BVHs.
+	class RayTracer {
+	public:
+		RayTracer(void);
+		~RayTracer(void);
 
-						void					constructHierarchy(std::vector<RTTriangle>& triangles, SplitMode splitMode);
+		void					constructHierarchy(std::vector<RTTriangle>& triangles, SplitMode splitMode);
 
-    void				saveHierarchy			(const char* filename, const std::vector<RTTriangle>& triangles);
-    void				loadHierarchy			(const char* filename, std::vector<RTTriangle>& triangles);
+		RaycastResult naiveRaycast(const Vec3f & orig, const Vec3f & dir, int start, int end) const;
 
-    RaycastResult		raycast					(const Vec3f& orig, const Vec3f& dir) const;
+		void				saveHierarchy(const char* filename, const std::vector<RTTriangle>& triangles);
+		void				loadHierarchy(const char* filename, std::vector<RTTriangle>& triangles);
 
-    // This function computes an MD5 checksum of the input scene data,
-    // WITH the assumption that all vertices are allocated in one big chunk.
-    static FW::String	computeMD5				(const std::vector<Vec3f>& vertices);
+		RaycastResult		raycast(const Vec3f& orig, const Vec3f& dir) const;
 
-    std::vector<RTTriangle>* m_triangles;
+		// This function computes an MD5 checksum of the input scene data,
+		// WITH the assumption that all vertices are allocated in one big chunk.
+		static FW::String	computeMD5(const std::vector<Vec3f>& vertices);
 
-	void resetRayCounter() { m_rayCount = 0; }
-	int getRayCount() { return m_rayCount; }
+		std::vector<RTTriangle>* m_triangles;
 
-private:
-	mutable std::atomic<int> m_rayCount;
-	Bvh bvh;
-};
+		void resetRayCounter() { m_rayCount = 0; }
+		int getRayCount() { return m_rayCount; }
+
+	private:
+		mutable std::atomic<int> m_rayCount;
+		Bvh bvh;
+	};
 
 
 } // namespace FW
