@@ -10,9 +10,7 @@ using namespace std;
 
 namespace FW {
 
-	const uint32_t TRI_LIMIT = 3;
-	const uint32_t SAH_LIMIT = 3;
-	const uint32_t GROUPS = 10;
+	const uint32_t TRI_LIMIT = 64;
 
 	Bvh::Bvh() { }
 
@@ -35,37 +33,22 @@ namespace FW {
 		return std::make_pair(AABB(mi, ma), AABB(mic, mac));
 	}
 
-	AABB Bvh::maxBB(int start, int end) {
-		Vec3f ma = Vec3f();
-		Vec3f mi = Vec3f();
-		for (int i = start; i < end; i++) {
-			RTTriangle trig = (*triangles_)[getIndex(i)];
-			Vec3f maxx = trig.max();
-			Vec3f minn = trig.min();
-			for (uint32_t j = 0; j < 3; j++) {
-				ma[j] = std::max(maxx[j], ma[j]);
-				mi[j] = std::min(minn[j], mi[j]);
-			}
-		}
-		return AABB(mi, ma);
-	}
-
-	F32 Bvh::surfaceArea(AABB bb) {
-		F32 x = bb.max[0] - bb.min[0];
-		F32 y = bb.max[1] - bb.min[1];
-		F32 z = bb.max[2] - bb.min[2];
-		return 2 * (x * y + y * z + x * z);
-	}
-
 	Bvh::Bvh(std::vector<RTTriangle>* triangles, SplitMode splitMode) {
 		triangles_ = triangles;
 		indices_ = std::vector<uint32_t>(triangles->size());
+		centroids_.reserve(triangles->size());
+		for (RTTriangle t : (*triangles_)) {
+			centroids_.push_back(t.centroid());
+		}
 		trig_comparator = TrigComparator(triangles, &indices_);
 		cout << "In total there are " << triangles->size() << " triangles" << endl;
 		for (uint32_t i = 0; i < indices_.size(); i++)
 			indices_[i] = i;
 		mode_ = splitMode;
-		cout << "Split mode: " << mode_ << endl;
+		if (mode_ != SplitMode::SplitMode_ObjectMedian && mode_ != SplitMode::SplitMode_SpatialMedian) {
+			cout << "Defaulting to object median" << endl;
+			mode_ = SplitMode::SplitMode_ObjectMedian;
+		}
 		BvhNode* n = new BvhNode(0, 0, indices_.size());
 		rootNode_ = std::unique_ptr<BvhNode>(n);
 		BvhNode* nodes[1000];
@@ -77,7 +60,6 @@ namespace FW {
 		start[0] = 0;
 		end[0] = indices_.size();
 		depth[0] = 0;
-		std::sort(indices_.begin(), indices_.end(), trig_comparator);
 		while (stackp) {
 			stackp--;
 			int st = start[stackp];
@@ -88,68 +70,50 @@ namespace FW {
 			AABB maxbb = bbs.first;
 			AABB cenbb = bbs.second;
 			node->bb = maxbb;
-			cout << "We have node with n = " << en - st << " triangles, bb is " << node->bb << endl;
-			if (mode_ == SplitMode::SplitMode_Sah) {
-				if (en - st > SAH_LIMIT) {
-					// Try planes
-					F32 best_score = 999999999.0f;
-					int best_mid;
-					int best_dim;
-					Vec3f dims = cenbb.max - cenbb.min;
-					int n = en - st;
-					for (int j = 0; j < 3; j++) {
-						trig_comparator.setDim(j);
-						std::sort(indices_.begin() + st, indices_.begin() + en, trig_comparator);
-						for (int split = 1; split < GROUPS - 1; split++) {
-							int mid = split * n / GROUPS;
-							AABB left_bb = maxBB(st, mid);
-							AABB right_bb = maxBB(mid, en);
-							F32 sah_score = surfaceArea(left_bb) * (mid - st) + surfaceArea(right_bb) * (en - mid);
-							if (sah_score < best_score) {
-								best_score = sah_score;
-								best_mid = mid;
-								best_dim = j;
-							}
-						}
+			if (en - st > TRI_LIMIT) {
+				// Find the max dim
+				uint32_t maxdim;
+				F32 maxval = -1.0;
+				Vec3f dims = bbs.second.max - bbs.second.min;
+				for (uint32_t i = 0; i < 3; i++) {
+					if (dims[i] > maxval) {
+						maxval = dims[i];
+						maxdim = i;
+						trig_comparator.setDim(i);
 					}
-					int mid = best_mid;
-					nodes[stackp] = new BvhNode(dep + 1, st, mid);
-					node->left.reset(nodes[stackp]);
-					depth[stackp] = dep + 1;
-					start[stackp] = st;
-					end[stackp++] = mid;
-					nodes[stackp] = new BvhNode(dep + 1, mid, en);
-					node->right.reset(nodes[stackp]);
-					depth[stackp] = dep + 1;
-					start[stackp] = mid;
-					end[stackp++] = en;
 				}
-			
-			} else {
-				if (en - st > TRI_LIMIT) {
-					// Find the max dim
-					F32 maxval = -1.0;
-					Vec3f dims = bbs.second.max - bbs.second.min;
-					for (uint32_t i = 0; i < 3; i++) {
-						if (dims[i] > maxval) {
-							maxval = dims[i];
-							trig_comparator.setDim(i);
-						}
-					}
-					// Split on the object median
+				int mid;
+				if (mode_ == SplitMode::SplitMode_ObjectMedian) {
+					// Split on median of objects
 					std::sort(indices_.begin() + st, indices_.begin() + en, trig_comparator);
-					int mid = (en + st) / 2;
-					nodes[stackp] = new BvhNode(dep + 1, st, mid);
-					node->left.reset(nodes[stackp]);
-					depth[stackp] = dep + 1;
-					start[stackp] = st;
-					end[stackp++] = mid;
-					nodes[stackp] = new BvhNode(dep + 1, mid, en);
-					node->right.reset(nodes[stackp]);
-					depth[stackp] = dep + 1;
-					start[stackp] = mid;
-					end[stackp++] = en;
+					mid = st + (en - st) / 2;
 				}
+				else if(mode_ == SplitMode::SplitMode_SpatialMedian) {
+					// Split on the center of axis
+					F32 splitp = 0.5f * (cenbb.min[maxdim] + cenbb.max[maxdim]);
+					mid = st;
+					for (int i = st; i < en; i++) {
+						if (centroids_[getIndex(i)][maxdim] < splitp) {
+							std::swap(indices_[i], indices_[mid]);
+							mid++;
+						}
+					}
+					if (mid == st || mid == en)
+						mid = st + (en - st) / 2;
+				}
+				else {
+					throw "Split mode not implemented!";
+				}
+				nodes[stackp] = new BvhNode(dep + 1, st, mid);
+				node->left.reset(nodes[stackp]);
+				depth[stackp] = dep + 1;
+				start[stackp] = st;
+				end[stackp++] = mid;
+				nodes[stackp] = new BvhNode(dep + 1, mid, en);
+				node->right.reset(nodes[stackp]);
+				depth[stackp] = dep + 1;
+				start[stackp] = mid;
+				end[stackp++] = en;
 			}
 		}
 		cout << "We are done constructing the whole BVH" << endl;
