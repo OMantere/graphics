@@ -2,7 +2,7 @@
 
 
 #include "BvhNode.hpp"
-
+#include "TrigComparator.hpp"
 
 #include <vector>
 #include <iostream>
@@ -10,7 +10,6 @@
 
 
 namespace FW {
-
 
 	class Bvh {
 	public:
@@ -40,6 +39,8 @@ namespace FW {
 		std::pair<AABB, AABB> calculateBB(int start, int end);
 		int sortVertices(int dim, int start, int end);
 
+		void bvhTest(BvhNode* n);
+
 	private:
 
 
@@ -47,6 +48,7 @@ namespace FW {
 		std::unique_ptr<BvhNode>		rootNode_;
 		std::vector<RTTriangle>*        triangles_;
 		std::vector<uint32_t>			indices_; // triangle index list that will be sorted during BVH construction
+		TrigComparator					trig_comparator;
 	};
 
 

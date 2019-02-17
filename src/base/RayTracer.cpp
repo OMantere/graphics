@@ -119,48 +119,73 @@ namespace FW
 		return castresult;
 	}
 
-
+	
 	RaycastResult RayTracer::raycast(const Vec3f& orig, const Vec3f& dir) const {
 		++m_rayCount;
-
+		//return naiveRaycast(orig, dir, 0, m_triangles->size());
+			
 		// YOUR CODE HERE (R1):
 		// This is where you hierarchically traverse the tree you built!
 		// You can use the existing code for the leaf nodes.
 
-		std::stack<BvhNode*> s;
+		BvhNode* stack[64];
+		F32 node_t[64];				  // Minimum hit t on this node
+		RaycastResult closest_intersection;  // Closest intersection found
+		closest_intersection.t = 999999999.f;
+		int stackp = 0;
 		// Get the root node
 		const BvhNode& root = bvh.root();
-		if (!!root.left)
-			s.push(root.left.get());
-		else
+		if (!!root.left) {
+			stack[stackp] = root.left.get();
+			node_t[stackp++] = -999999999.f;
+		} else
 			return naiveRaycast(orig, dir, 0, m_triangles->size());
-		if (!!root.right)
-			s.push(root.right.get());
-		RaycastResult best_result;
+		if (!!root.right) {
+			stack[stackp] = root.right.get();
+			node_t[stackp++] = -999999999.f;
+		}
 		Vec3f Rinv = Vec3f(1.0f / dir[0], 1.0f / dir[1], 1.0f / dir[2]);
-		while (!s.empty()) {
-			BvhNode* node = s.top(); s.pop();
-			// Get the bb at this node, check intersections with the ray
-			AABB bb = node->bb;
-			float intersect_t;
-			bool did_intersect = bb.rectIntersect(orig, dir, Rinv, intersect_t);
-			// If there is intersection, recurse further
-			if (did_intersect) {
-				if (!!node->left) {
-					s.push(node->left.get());
-					if (!!node->right)
-						s.push(node->right.get());
+		while (stackp) {
+			BvhNode* node = stack[--stackp];
+			F32 near_t = node_t[stackp];
+			if (near_t > closest_intersection.t) // If we have already intersected closer than this node, skip
+				continue;
+			if (!!node->left) {
+				F32 left_intersect_t;
+				F32 right_intersect_t = 999999999.f;
+				bool left_result = node->left->bb.intersect2(orig, dir, Rinv, left_intersect_t);
+				bool right_result = false;
+				if (!!node->right) {
+					bool right_result = node->right->bb.rectIntersect(orig, dir, Rinv, right_intersect_t);
 				}
-				else { // We are at the leaf
-					RaycastResult result = naiveRaycast(orig, dir, node->startPrim, node->endPrim);
-					if (result && result.t < best_result.t) {
-						best_result = result;
+				if (right_result && left_result) {
+					int left_i = stackp + 1;
+					int right_i = stackp;
+					stackp += 2;
+					if (left_intersect_t > right_intersect_t) { // Push the farther node first
+						std::swap(left_i, right_i);
 					}
+					stack[right_i] = node->right.get();
+					node_t[right_i] = right_intersect_t;
+					stack[left_i] = node->left.get();
+					node_t[left_i] = left_intersect_t;
 				}
+				else if (left_result) {
+					stack[stackp] = node->left.get();
+					node_t[stackp++] = left_intersect_t;	
+				}
+				else if (right_result) {
+					stack[stackp] = node->right.get();
+					node_t[stackp++] = right_intersect_t;
+				}
+			} else { // We are at the leaf
+				RaycastResult result = naiveRaycast(orig, dir, node->startPrim, node->endPrim);
+				if (result && result.t < closest_intersection.t)
+					closest_intersection = result;
 			}
 		}
 
-		return best_result;
+		return closest_intersection;
 	}
 
 } // namespace FW

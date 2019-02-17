@@ -5,9 +5,9 @@
 
 namespace FW {
 
-BvhNode::BvhNode(size_t depth, size_t start, size_t end) :
-        bb(),
-        startPrim(start), endPrim(end)
+	BvhNode::BvhNode(size_t depth, size_t start, size_t end) :
+		bb(),
+		startPrim(start), endPrim(end)
 {}
 
 BvhNode::BvhNode(Loader& stream, size_t depth) {

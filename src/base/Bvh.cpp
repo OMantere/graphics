@@ -12,21 +12,24 @@ namespace FW {
 
 	const uint32_t MAX_TRIS = 10;
 
-	class TrigComparator
-	{
-	public:
-		int dim;
-		std::vector<RTTriangle>* triangles_;
-		TrigComparator(int dim, std::vector<RTTriangle>* triangles) : dim(dim), triangles_(triangles) {};
-		bool operator ()(int a, int b)
-		{
-			RTTriangle t1 = (*triangles_)[a];
-			RTTriangle t2 = (*triangles_)[b];
-			return t1.centroid()[dim] < t2.centroid()[dim];
-		}
-	};
-
 	Bvh::Bvh() { }
+
+	void Bvh::bvhTest(BvhNode* n) {
+		AABB bb = n->bb;
+		for (int i = n->startPrim; i < n->endPrim; i++) {
+			RTTriangle t = (*triangles_)[getIndex(i)];
+			for (int j = 0; j < 3; j++) {
+				if (t.max()[j] > bb.max[j])
+					cout << "t[i = " << i << "].max() was bigger than bb.max() !!!" << endl;
+				if (t.min()[j] < bb.min[j])
+					cout << "t[i = " << i << "].min() was smaller than bb.min() !!!" << endl;
+			}
+		}
+		if (!!n->left)
+			bvhTest(n->left.get());
+		if (!!n->right)
+			bvhTest(n->right.get());
+	}
 
 	Bvh::Bvh(std::vector<RTTriangle>* triangles, SplitMode splitMode) {
 		triangles_ = triangles;
@@ -34,11 +37,15 @@ namespace FW {
 		cout << "In total there are " << triangles->size() << " triangles" << endl;
 		for (uint32_t i = 0; i < indices_.size(); i++)
 			indices_[i] = i;
+		trig_comparator = TrigComparator(triangles_, &indices_);
 		mode_ = splitMode;
 		BvhNode* n = new BvhNode(0, 0, indices_.size());
 		rootNode_ = std::unique_ptr<BvhNode>(n);
 		constructTree(n, 0, indices_.size(), 1);
 		cout << "We are done constructing the whole BVH" << endl;
+		
+		// Test
+		//bvhTest(n);
 	}
 
 	std::pair<AABB, AABB> Bvh::calculateBB(int start, int end) {
@@ -50,11 +57,11 @@ namespace FW {
 			RTTriangle trig = (*triangles_)[getIndex(i)];
 			Vec3f maxx = trig.max();
 			Vec3f minn = trig.min();
-			for (uint32_t i = 0; i < 3; i++) {
-				ma[i] = std::max(maxx[i], ma[i]);
-				mi[i] = std::min(minn[i], mi[i]);
-				mac[i] = std::max(trig.centroid()[i], mac[i]);
-				mic[i] = std::max(trig.centroid()[i], mic[i]);
+			for (uint32_t j = 0; j < 3; j++) {
+				ma[j] = std::max(maxx[j], ma[j]);
+				mi[j] = std::min(minn[j], mi[j]);
+				mac[j] = std::max(trig.centroid()[j], mac[j]);
+				mic[j] = std::max(trig.centroid()[j], mic[j]);
 			}
 		}
 		return std::make_pair(AABB(mi, ma), AABB(mic, mac));
@@ -63,7 +70,8 @@ namespace FW {
 
 
 	int Bvh::sortVertices(int dim, int start, int end) {
-		std::sort(indices_.begin() + start, indices_.begin() + end, TrigComparator(dim, triangles_));
+		trig_comparator.setDim(dim);
+		std::sort(indices_.begin() + start, indices_.begin() + end, trig_comparator);
 		return (end - start) / 2 + start;
 	}
 
@@ -71,7 +79,7 @@ namespace FW {
 	void Bvh::constructTree(BvhNode* n, int start, int end, int depth) {
 		std::pair<AABB, AABB> bbs = calculateBB(start, end);
 		n->bb = bbs.first;
-		cout << "BB has " << (end - start) << " triangles and is " << n->bb << endl;
+		//cout << "BB has " << (end - start) << " triangles and is " << n->bb << endl;
 		n->left = 0;
 		n->right = 0;
 
