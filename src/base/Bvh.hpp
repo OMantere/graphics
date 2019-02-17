@@ -38,8 +38,8 @@ namespace FW {
 		//std::vector<uint32_t>* idx;
 		std::pair<AABB, AABB> calculateBB(int start, int end);
 		int sortVertices(int dim, int start, int end);
-
-		void bvhTest(BvhNode* n);
+		AABB maxBB(int start, int end);
+		F32 surfaceArea(AABB bb);
 
 	private:
 
@@ -48,6 +48,7 @@ namespace FW {
 		std::unique_ptr<BvhNode>		rootNode_;
 		std::vector<RTTriangle>*        triangles_;
 		std::vector<uint32_t>			indices_; // triangle index list that will be sorted during BVH construction
+		std::vector<Vec3f>				centroids_; // trig centroids for sorting
 		TrigComparator					trig_comparator;
 	};
 
