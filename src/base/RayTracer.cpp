@@ -10,6 +10,7 @@
 #include <stack>
 #include <memory>
 #include <iostream>
+#include <set>
 
 #include "rtlib.hpp"
 
@@ -131,7 +132,6 @@ namespace FW
 		BvhNode* stack[64];
 		F32 node_t[64];				  // Minimum hit t on this node
 		RaycastResult closest_intersection;  // Closest intersection found
-		closest_intersection.t = 999999999.f;
 		int stackp = 0;
 		// Get the root node
 		const BvhNode& root = bvh.root();
@@ -146,23 +146,22 @@ namespace FW
 		}
 		Vec3f Rinv = Vec3f(1.0f / dir[0], 1.0f / dir[1], 1.0f / dir[2]);
 		while (stackp) {
-			BvhNode* node = stack[--stackp];
+			stackp--;
+			BvhNode* node = stack[stackp];
 			F32 near_t = node_t[stackp];
-			if (near_t > closest_intersection.t) // If we have already intersected closer than this node, skip
-				continue;
 			if (!!node->left) {
 				F32 left_intersect_t;
-				F32 right_intersect_t = 999999999.f;
-				bool left_result = node->left->bb.intersect2(orig, dir, Rinv, left_intersect_t);
+				F32 right_intersect_t;
+				bool left_result = node->left->bb.rectIntersect(orig, dir, Rinv, left_intersect_t);
 				bool right_result = false;
 				if (!!node->right) {
-					bool right_result = node->right->bb.rectIntersect(orig, dir, Rinv, right_intersect_t);
+					right_result = node->right->bb.rectIntersect(orig, dir, Rinv, right_intersect_t);
 				}
-				if (right_result && left_result) {
-					int left_i = stackp + 1;
-					int right_i = stackp;
+				if (left_result && right_result) {
+					int left_i = stackp;
+					int right_i = stackp + 1;
 					stackp += 2;
-					if (left_intersect_t > right_intersect_t) { // Push the farther node first
+					if (left_intersect_t < right_intersect_t) { // Push the farther node first
 						std::swap(left_i, right_i);
 					}
 					stack[right_i] = node->right.get();
@@ -184,7 +183,6 @@ namespace FW
 					closest_intersection = result;
 			}
 		}
-
 		return closest_intersection;
 	}
 
